@@ -222,7 +222,7 @@ void protocol_execution(int sock)
   while (offset < tbr) // offset이 받을 바이트 수보다 작은 동안 반복
   {
     rcvd = read(sock, buf + offset, tbr - offset); 
-    //tbs - offset 였는데 tbr - offset으로 수정 (오타인듯 합니다)   
+    // tbs - offset 였는데 tbr - offset으로 수정 (오타인듯 합니다)   
     // 데이터의 현재 수신 위치(buf + offset)에서 부터 남은 분량(tbr - offset)만큼의 내용을 소켓에서 읽고 저장
 
     if (rcvd > 0)
