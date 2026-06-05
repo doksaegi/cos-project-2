@@ -8,8 +8,11 @@
 #include <assert.h>
 
 #include "opcode.h"
+#include "byte_op.h" // Big Endian 변환 매크로(VAR_TO_MEM_XBYTES)를 사용하기 위해 헤더 포함
+
 using namespace std;
 
+// 기본 생성자: 소켓 및 주소 정보 초기화
 NetworkManager::NetworkManager() 
 {
   this->sock = -1;
@@ -17,6 +20,7 @@ NetworkManager::NetworkManager()
   this->port = -1;
 }
 
+// 매개변수 생성자: 목적지 IP 주소와 포트 번호 설정
 NetworkManager::NetworkManager(const char *addr, int port)
 {
   this->sock = -1;
@@ -24,104 +28,162 @@ NetworkManager::NetworkManager(const char *addr, int port)
   this->port = port;
 }
 
+// IP 주소 설정 함수
 void NetworkManager::setAddress(const char *addr)
 {
   this->addr = addr;
 }
 
+// IP 주소 반환 함수
 const char *NetworkManager::getAddress()
 {
   return this->addr;
 }
 
+// 포트 번호 설정 함수
 void NetworkManager::setPort(int port)
 {
   this->port = port;
 }
 
+// 포트 번호 반환 함수
 int NetworkManager::getPort()
 {
   return this->port;
 }
 
+// 소켓을 생성하고 컨트롤 서버에 연결(connect)하는 초기화 함수
 int NetworkManager::init()
 {
-	struct sockaddr_in serv_addr;
+  struct sockaddr_in serv_addr;
 
-	this->sock = socket(PF_INET, SOCK_STREAM, 0);
-	if (this->sock == FAILURE)
+  // IPv4, TCP 프로토콜 소켓 생성
+  this->sock = socket(PF_INET, SOCK_STREAM, 0);
+  if (this->sock == FAILURE)
   {
     cout << "[*] Error: socket() error" << endl;
     cout << "[*] Please try again" << endl;
     exit(1);
   }
 
-	memset(&serv_addr, 0, sizeof(serv_addr));
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_addr.s_addr = inet_addr(this->addr);
-	serv_addr.sin_port = htons(this->port);
+  // 서버 주소 구조체 초기화 및 설정
+  memset(&serv_addr, 0, sizeof(serv_addr));
+  serv_addr.sin_family = AF_INET;
+  serv_addr.sin_addr.s_addr = inet_addr(this->addr); // 문자열 형식을 네트워크 바이트 순서의 IP로 변환
+  serv_addr.sin_port = htons(this->port);            // 호스트 바이트 순서의 포트를 네트워크 바이트 순서로 변환
 
-	if (connect(this->sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == FAILURE)
+  // 서버에 연결 요청
+  if (connect(this->sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == FAILURE)
   {
     cout << "[*] Error: connect() error" << endl;
     cout << "[*] Please try again" << endl;
     exit(1);
   }
-	
+  
   cout << "[*] Connected to " << this->addr << ":" << this->port << endl;
 
   return sock;
 }
 
-// TODO: You should revise the following code
-int NetworkManager::sendData(uint8_t *data, int dlen)
+// [업데이트] 에지 -> 서버: 6바이트 센서 집계 데이터 전송 함수
+// 요구 포맷(총 6B):
+//   humid_avg(1), temp_min(1), temp_avgm(1), power_daily(2), month(1)
+// 전송 순서도 위와 동일하며, power_daily는 Big Endian 2바이트로 인코딩한다.
+int NetworkManager::sendData(uint8_t *data, int dlen) // NetworkManger 의 sendData 함수를 외부에서 구현
 {
-  int sock, tbs, sent, offset, num, jlen;
-  unsigned char opcode;
-  uint8_t n[4];
-  uint8_t *p;
-
-  sock = this->sock;
-  // Example) data (processed by ProcessManager) consists of:
-  // Example) minimum temperature (1 byte) || minimum humidity (1 byte) || minimum power (2 bytes) || month (1 byte)
-  // Example) edge -> server: opcode (OPCODE_DATA, 1 byte)
-  opcode = OPCODE_DATA;
-  tbs = 1; offset = 0;
-  while (offset < tbs)
+  // 데이터 집계 담당자(Role 1-1)가 배열 형태로 넘겨준 데이터 구조
+  // data[0]: humid_avg (1B)
+  // data[1]: temp_min (1B)
+  // data[2]: temp_avgm (1B)
+  // data[3~4]: power_daily (2B, high->low)
+  // data[5]: month (1B)
+  if (dlen < 6)
   {
-    sent = write(sock, &opcode + offset, tbs - offset);
-    if (sent > 0)
-      offset += sent;
+    cout << "[*] Error: invalid data length. need 6 bytes." << endl; // 6 바이트 미만이면 오류 처리
+    return -1;
   }
-  assert(offset == tbs);
 
-  // Example) edge -> server: temperature (1 byte) || humidity (1 byte) || power (2 bytes) || month (1 byte)
-  tbs = 5; offset = 0;
-  while (offset < tbs)
+  uint8_t humid_avg    = data[0];
+  uint8_t temp_min     = data[1];
+  uint8_t temp_avgm    = data[2];
+  uint16_t power_daily = (static_cast<uint16_t>(data[3]) << 8) | data[4]; // 2바이트를 Big Endian으로 합쳐서 uint16_t로 표현
+  uint8_t month        = data[5];
+
+  // 프로토콜 규격에 맞춘 전송용 버퍼 공간 생성 (총 6바이트)
+  uint8_t payload[6];
+  uint8_t *p = payload; // byte_op.h 매크로 내부에서 참조하고 자동 이동시킬 포인터 변수
+
+  // byte_op.h 매크로를 사용하여 Big Endian 포맷으로 인코딩
+  VAR_TO_MEM_1BYTE_BIG_ENDIAN(humid_avg, p);     // 1 Byte
+  VAR_TO_MEM_1BYTE_BIG_ENDIAN(temp_min, p);      // 1 Byte
+  VAR_TO_MEM_1BYTE_BIG_ENDIAN(temp_avgm, p);     // 1 Byte
+  VAR_TO_MEM_2BYTES_BIG_ENDIAN(power_daily, p);  // 2 Bytes
+  VAR_TO_MEM_1BYTE_BIG_ENDIAN(month, p);         // 1 Byte
+
+  int sock = this->sock; // 소켓
+  unsigned char opcode = OPCODE_DATA; // 데이터 스트림 시작 알림용 1바이트 연산 코드
+  int sent = 0; // write()로 실제 전송된 바이트 수를 저장하는 변수
+  int offset = 0; // 전송된 바이트 수를 누적하여 전체 전송 완료 여부를 판단하는 오프셋 변수
+
+  // [단계 1] 1바이트 OPCODE_DATA 전송 (부분 송신 방지 루프)
+  int tbs = 1; // 전송해야 할 총 바이트 수(목표치)
+  while (offset < tbs) // offset가 목표치에 도달할 때까지 반복
   {
-    sent = write(sock, data + offset, tbs - offset);
-    if (sent > 0)
-      offset += sent;
+    sent = write(sock, &opcode + offset, tbs - offset); // 
+    if (sent <= 0) // sent가 0 이하이면 오류 처리
+    {
+      cout << "[*] Error: Failed to send opcode." << endl; 
+      return -1;
+    }
+    offset += sent;
   }
-  assert(offset == tbs);
 
-  return 0;
+  // [단계 2] 실제 센서 payload 6바이트 전송
+  tbs = 6;
+  offset = 0;
+  while (offset < tbs) // offset가 목표치에 도달할 때까지 반복
+  {
+    sent = write(sock, payload + offset, tbs - offset);
+    if (sent <= 0) // sent가 0 이하이면 오류 처리
+    {
+      cout << "[*] Error: Failed to send data payload." << endl;
+      return -1;
+    }
+    offset += sent; // offset 에 sent 만큼 누적
+  }
+
+  return 0; // 정상 전송 완료
 }
 
-// TODO: Please revise or implement this function as you want. You can also remove this function if it is not needed
-uint8_t NetworkManager::receiveCommand() 
+// 서버 -> 에지: 서버 측 다음 지시 명령어(Opcode) 수신 함수
+uint8_t NetworkManager::receiveCommand() // NetworkManger 의 receiveCommand 함수를 외부에서 구현
 {
-  int sock;
-  uint8_t opcode;
-  uint8_t *p;
+  int sock = this->sock; // 소켓
+  uint8_t opcode = OPCODE_WAIT; // 초기 상태를 WAIT로 둔다
+  int nread = 0;
 
-  sock = this->sock;
-  opcode = OPCODE_WAIT;
-
+  // opcode가 WAIT인 동안 반복
   while (opcode == OPCODE_WAIT)
-    read(sock, &opcode, 1);
+  {
+    nread = read(sock, &opcode, 1); // 서버로부터 1바이트 opcode 읽고 상태를 업데이트
+    
+    if (nread < 0)
+    {
+      cout << "[*] Error: read() error inside receiveCommand." << endl; //nread가 음수이면 읽기 오류 처리
+      return OPCODE_QUIT;
+    }
+    else if (nread == 0)
+    {
+      cout << "[*] Server disconnected." << endl; // nread가 0이면 서버가 연결을 종료한 것으로 간주
+      return OPCODE_QUIT;
+    }
+  }
 
-  assert(opcode == OPCODE_DONE || opcode == OPCODE_QUIT) ;
+  // 예상 외 opcode가 오면 경고 출력
+  if (opcode != OPCODE_DONE && opcode != OPCODE_QUIT)
+  {
+    cout << "[*] Warning: Received unexpected opcode from server: " << (int)opcode << endl;
+  }
 
-  return opcode;
+  return opcode; // DONE 또는 QUIT 중 하나를 반환
 }
