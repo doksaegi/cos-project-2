@@ -129,7 +129,7 @@ int NetworkManager::sendData(uint8_t *data, int dlen) // NetworkManger 의 sendD
   int tbs = 1; // 전송해야 할 총 바이트 수(목표치)
   while (offset < tbs) // offset가 목표치에 도달할 때까지 반복
   {
-    sent = write(sock, &opcode + offset, tbs - offset); // 
+    sent = write(sock, &opcode + offset, tbs - offset); // 데이터의 현재 전송 위치(&opcode + offset)부터 남은 분량(tbs - offset)만큼의 내용을 edge 소켓에 기록, write()는 실제로 전송된 바이트 수를 반환
     if (sent <= 0) // sent가 0 이하이면 오류 처리
     {
       cout << "[*] Error: Failed to send opcode." << endl; 
@@ -143,13 +143,13 @@ int NetworkManager::sendData(uint8_t *data, int dlen) // NetworkManger 의 sendD
   offset = 0;
   while (offset < tbs) // offset가 목표치에 도달할 때까지 반복
   {
-    sent = write(sock, payload + offset, tbs - offset);
+    sent = write(sock, payload + offset, tbs - offset);  // payload의 현재 전송 위치(payload + offset)부터 남은 분량(tbs - offset)만큼의 내용을 edge 소켓에 기록
     if (sent <= 0) // sent가 0 이하이면 오류 처리
     {
       cout << "[*] Error: Failed to send data payload." << endl;
       return -1;
     }
-    offset += sent; // offset 에 sent 만큼 누적
+    offset += sent; // offset 에 보내진 sent 만큼 누적
   }
 
   return 0; // 정상 전송 완료
