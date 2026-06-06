@@ -42,7 +42,7 @@ class Server:
         payload = json.dumps(config) # json.dumps()로 dict -> JSON 문자열 변환
 
         try:
-            r = requests.post(f"{self.base_url}/{self.name}", json=payload, timeout=10) #json=payload 로 설정값을 담고, 10초(timeout) 안에 답이 없으면 연결을 끊음
+            r = requests.post(f"{self.base_url}/{self.name}", json=payload, timeout=10) #json=payload 로 설정값을 담고, 10초(timeout) 안에 답이 없으면 연결을 끊음 (HTTP 통신 (REST API [POST]))
             r.raise_for_status() # 서버가 에러 코드(404, 500) 반환 했는지 확인 (에러일 시 except로 넘어감)
             result = r.json() # JSON 응답을 dict로 변환하고 result 변수에 저장
         except Exception as e:
@@ -165,7 +165,7 @@ class Server:
 
             # 2) Trigger model training
             try:
-                tr = requests.post(f"{self.base_url}/{self.name}/training", timeout=30) # AI 모듈에 모델 학습 시작 신호를 보내는 POST 요청, 30초(timeout) 안에 답이 없으면 연결을 끊음
+                tr = requests.post(f"{self.base_url}/{self.name}/training", timeout=30) # AI 모듈에 모델 학습 시작 신호를 보내는 POST 요청, 30초(timeout) 안에 답이 없으면 연결을 끊음 (HTTP 통신 (REST API [POST]))
                 tr.raise_for_status() # 서버가 에러 코드(404, 500 등) 반환 했는지 확인 (에러일 시 except로 넘어감)
                 trj = tr.json() # JSON 응답을 dict로 변환하고 trj 변수에 저장
                 if trj.get("opcode") == "failure":
@@ -207,7 +207,7 @@ class Server:
 
             # 4) Final result
             try:
-                rr = requests.get(f"{self.base_url}/{self.name}/result", timeout=10) # AI 모듈에 최종 결과 요청하는 GET 요청, 10초(timeout) 안에 답이 없으면 연결을 끊음
+                rr = requests.get(f"{self.base_url}/{self.name}/result", timeout=10) # AI 모듈에 최종 결과 요청하는 GET 요청, 10초(timeout) 안에 답이 없으면 연결을 끊음 (HTTP 통신 (REST API [GET]))
                 rr.raise_for_status() # 서버가 에러 코드(404, 500 등) 반환 했는지 확인 (에러일 시 except로 넘어감)
                 result = rr.json() # JSON 응답을 dict로 변환하고 result 변수에 저장
             except Exception as e:
