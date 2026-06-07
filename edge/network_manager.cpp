@@ -85,40 +85,33 @@ int NetworkManager::init()
   return sock;
 }
 
-// [업데이트] 에지 -> 서버: 6바이트 센서 집계 데이터 전송 함수
-// 요구 포맷(총 6B):
-//   humid_avg(1), temp_min(1), temp_avgm(1), power_daily(2), month(1)
-// 전송 순서도 위와 동일하며, power_daily는 Big Endian 2바이트로 인코딩한다.
-int NetworkManager::sendData(uint8_t *data, int dlen) // NetworkManger 의 sendData 함수를 외부에서 구현
+// [업데이트] 에지 -> 서버: 4바이트 센서 집계 데이터 전송 함수
+// 송신 포맷(총 4B):
+// temp_avg(1), month(1), power_avg(2, Big Endian)
+int NetworkManager::sendData(uint8_t *data, int dlen) // NetworkManager의 sendData 함수를 외부에서 구현
 {
-  // 데이터 집계 담당자(Role 1-1)가 배열 형태로 넘겨준 데이터 구조
-  // data[0]: humid_avg (1B)
-  // data[1]: temp_min (1B)
-  // data[2]: temp_avgm (1B)
-  // data[3~4]: power_daily (2B, high->low)
-  // data[5]: month (1B)
-  if (dlen < 6)
+  // 데이터 집계 담당자가 배열 형태로 넘겨준 데이터 구조
+  // data[0]: temp_avg (1B)
+  // data[1]: month (1B)
+  // data[2~3]: power_avg (2B, high->low)
+  if (dlen < 4)
   {
-    cout << "[*] Error: invalid data length. need 6 bytes." << endl; // 6 바이트 미만이면 오류 처리
+    cout << "[*] Error: invalid data length. need 4 bytes." << endl; // 4 바이트 미만이면 오류 처리
     return -1;
   }
 
-  uint8_t humid_avg    = data[0];
-  uint8_t temp_min     = data[1];
-  uint8_t temp_avgm    = data[2];
-  uint16_t power_daily = (static_cast<uint16_t>(data[3]) << 8) | data[4]; // 2바이트를 Big Endian으로 합쳐서 uint16_t로 표현
-  uint8_t month        = data[5];
+  uint8_t temp_avg   = data[0];
+  uint8_t month      = data[1];
+  uint16_t power_avg = (static_cast<uint16_t>(data[2]) << 8) | data[3]; // 2바이트를 Big Endian으로 합쳐서 uint16_t로 표현
 
-  // 프로토콜 규격에 맞춘 전송용 버퍼 공간 생성 (총 6바이트)
-  uint8_t payload[6];
+  // 프로토콜 규격에 맞춘 전송용 버퍼 공간 생성 (총 4바이트)
+  uint8_t payload[4];
   uint8_t *p = payload; // byte_op.h 매크로 내부에서 참조하고 자동 이동시킬 포인터 변수
 
   // byte_op.h 매크로를 사용하여 Big Endian 포맷으로 인코딩
-  VAR_TO_MEM_1BYTE_BIG_ENDIAN(humid_avg, p);     // 1 Byte
-  VAR_TO_MEM_1BYTE_BIG_ENDIAN(temp_min, p);      // 1 Byte
-  VAR_TO_MEM_1BYTE_BIG_ENDIAN(temp_avgm, p);     // 1 Byte
-  VAR_TO_MEM_2BYTES_BIG_ENDIAN(power_daily, p);  // 2 Bytes
-  VAR_TO_MEM_1BYTE_BIG_ENDIAN(month, p);         // 1 Byte
+  VAR_TO_MEM_1BYTE_BIG_ENDIAN(temp_avg, p);    // 1 Byte
+  VAR_TO_MEM_1BYTE_BIG_ENDIAN(month, p);       // 1 Byte
+  VAR_TO_MEM_2BYTES_BIG_ENDIAN(power_avg, p);  // 2 Bytes
 
   int sock = this->sock; // 소켓
   unsigned char opcode = OPCODE_DATA; // 데이터 스트림 시작 알림용 1바이트 연산 코드
@@ -127,9 +120,9 @@ int NetworkManager::sendData(uint8_t *data, int dlen) // NetworkManger 의 sendD
 
   // [단계 1] 1바이트 OPCODE_DATA 전송 (부분 송신 방지 루프)
   int tbs = 1; // 전송해야 할 총 바이트 수(목표치)
-  while (offset < tbs) // offset가 목표치에 도달할 때까지 반복
+  while (offset < tbs) // offset이 목표치에 도달할 때까지 반복
   {
-    sent = write(sock, &opcode + offset, tbs - offset); // 데이터의 현재 전송 위치(&opcode + offset)부터 남은 분량(tbs - offset)만큼의 내용을 edge 소켓에 기록, write()는 실제로 전송된 바이트 수를 반환
+    sent = write(sock, &opcode + offset, tbs - offset); // 데이터의 현재 전송 위치(&opcode + offset)부터 남은 분량(tbs - offset)만큼의 내용을 에지 소켓에 기록, write()는 실제로 전송된 바이트 수를 반환
     if (sent <= 0) // sent가 0 이하이면 오류 처리
     {
       cout << "[*] Error: Failed to send opcode." << endl; 
@@ -138,25 +131,25 @@ int NetworkManager::sendData(uint8_t *data, int dlen) // NetworkManger 의 sendD
     offset += sent;
   }
 
-  // [단계 2] 실제 센서 payload 6바이트 전송
-  tbs = 6;
+  // [단계 2] 실제 센서 payload 4바이트 전송
+  tbs = 4;
   offset = 0;
-  while (offset < tbs) // offset가 목표치에 도달할 때까지 반복
+  while (offset < tbs) // offset이 목표치에 도달할 때까지 반복
   {
-    sent = write(sock, payload + offset, tbs - offset);  // payload의 현재 전송 위치(payload + offset)부터 남은 분량(tbs - offset)만큼의 내용을 edge 소켓에 기록
+    sent = write(sock, payload + offset, tbs - offset);  // payload의 현재 전송 위치(payload + offset)부터 남은 분량(tbs - offset)만큼의 내용을 에지 소켓에 기록
     if (sent <= 0) // sent가 0 이하이면 오류 처리
     {
       cout << "[*] Error: Failed to send data payload." << endl;
       return -1;
     }
-    offset += sent; // offset 에 보내진 sent 만큼 누적
+    offset += sent; // offset에 보내진 sent 만큼 누적
   }
 
   return 0; // 정상 전송 완료
 }
 
 // 서버 -> 에지: 서버 측 다음 지시 명령어(Opcode) 수신 함수
-uint8_t NetworkManager::receiveCommand() // NetworkManger 의 receiveCommand 함수를 외부에서 구현
+uint8_t NetworkManager::receiveCommand() // NetworkManager의 receiveCommand 함수를 외부에서 구현
 {
   int sock = this->sock; // 소켓
   uint8_t opcode = OPCODE_WAIT; // 초기 상태를 WAIT로 둔다
@@ -169,7 +162,7 @@ uint8_t NetworkManager::receiveCommand() // NetworkManger 의 receiveCommand 함
     
     if (nread < 0)
     {
-      cout << "[*] Error: read() error inside receiveCommand." << endl; //nread가 음수이면 읽기 오류 처리
+      cout << "[*] Error: read() error inside receiveCommand." << endl; // nread가 음수이면 읽기 오류 처리
       return OPCODE_QUIT;
     }
     else if (nread == 0)

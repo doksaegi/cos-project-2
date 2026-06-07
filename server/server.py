@@ -108,18 +108,15 @@ class Server:
             logging.error(f"[-] AI module failure: {resp.get('reason', 'unknown')}")
             sys.exit(1)
 
-    # [업데이트] payload 포맷(총 6B):
-    # humid_avg(1), temp_min(1), temp_avgm(1), power_daily(2, Big Endian), month(1)
-    # 이번 버전은 temp_min/temp_avgm 포함 전부 unsigned 해석(signed=False)
+    # payload 포맷(총 4B):
+    # temp_avg(1), month(1), power_avg(2, Big Endian)
     def parse_data(self, payload, is_training):
-        humid_avg = int.from_bytes(payload[0:1], byteorder="big", signed=False)
-        temp_min  = int.from_bytes(payload[1:2], "big", signed=True)
-        temp_avgm = int.from_bytes(payload[2:3], "big", signed=True)
-        power_daily = int.from_bytes(payload[3:5], byteorder="big", signed=False)
-        month = int.from_bytes(payload[5:6], byteorder="big", signed=False)
+        temp_avg = int.from_bytes(payload[0:1], byteorder="big", signed=True)
+        month = int.from_bytes(payload[1:2], byteorder="big", signed=False)
+        power_avg = int.from_bytes(payload[2:4], byteorder="big", signed=False)
 
-        # AI 모듈 입력 포맷: [humid_avg, temp_min, temp_avgm, power_daily, month]
-        values = [humid_avg, temp_min, temp_avgm, power_daily, month]
+        # AI 모듈 입력 포맷: [temp_avg, month, power_avg]
+        values = [temp_avg, month, power_avg]
         logging.info(f"[*] Parsed data: {values}")
         self.send_instance(values, is_training)
 
@@ -148,8 +145,8 @@ class Server:
                     logging.error(f"[*] Invalid opcode in training phase: {opcode}") # opcode가 기대한 OPCODE_DATA가 아닐 때 에러 메시지 출력 + 루프 종료
                     return
 
-                # 6바이트 payload 수신
-                payload = self.recv_exact(sock, 6) # edge가 보낸 정확히 6바이트인 payload 수신
+                # 4바이트 payload 수신
+                payload = self.recv_exact(sock, 4) # edge가 보낸 정확히 4바이트인 payload 수신
                 if payload is None:
                     logging.error("[*] Failed to receive training payload.") # payload 수신 실패 시 에러 메시지 출력 + 루프 종료
                     return
@@ -159,7 +156,7 @@ class Server:
 
                 # 다음 학습 데이터 수신 신호: 남았으면 OPCODE_DONE, 더이상 없으면 OPCODE_WAIT
                 if ntrain > 0:
-                    sock.send(bytes([OPCODE_DONE])) 
+                    sock.send(bytes([OPCODE_DONE]))
                 else:
                     sock.send(bytes([OPCODE_WAIT]))
 
@@ -190,8 +187,8 @@ class Server:
                     logging.error(f"[*] Invalid opcode in testing phase: {opcode}") # opcode가 기대한 OPCODE_DATA가 아닐 때 에러 메시지 출력 + 루프 종료
                     return
 
-                # 6바이트 payload 수신
-                payload = self.recv_exact(sock, 6) # edge가 보낸 정확히 6바이트인 payload 수신
+                # 4바이트 payload 수신
+                payload = self.recv_exact(sock, 4) # edge가 보낸 정확히 4바이트인 payload 수신
                 if payload is None:
                     logging.error("[*] Failed to receive testing payload.") # payload 수신 실패 시 에러 메시지 출력 + 루프 종료
                     return
