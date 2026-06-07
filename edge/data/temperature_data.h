@@ -1,39 +1,17 @@
-#ifndef __TEMPERATURE_H__
-#define __TEMPERATURE_H__
+#ifndef __TEMPERATURE_DATA_H__
+#define __TEMPERATURE_DATA_H__
 
-#include <random>
-#include <ctime>
-#include <string>
-#include "info.h"
+#include "sensor_data.h"
 
-class TemperatureData
-{
-  private:
-    time_t timestamp;
-    double avg;
-    double min;
-    double max;
-    string unit;
-    TemperatureData *next;
-  public:
-    TemperatureData(time_t timestamp, double min, double max, double avg);
+class TemperatureData : public SensorData {
+private:
+  TemperatureData *next;
 
-    void setNext(TemperatureData *data);
-    TemperatureData *getNext();
+public:
+  TemperatureData(time_t timestamp, double min, double max, double avg);
 
-    void setValue(double value);
-    double getValue();
-
-    void setMin(double min);
-    double getMin();
-
-    void setMax(double max);
-    double getMax();
-
-    void setTimestamp(time_t timestamp);
-    time_t getTimestamp();
-
-    string getUnit();
+  void             setNext(TemperatureData *next);
+  TemperatureData *getNext();
 };
 
-#endif /* __TEMPERATURE_H__ */
+#endif /* __TEMPERATURE_DATA_H__ */

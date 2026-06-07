@@ -1,39 +1,17 @@
 #ifndef __HUMIDITY_DATA_H__
 #define __HUMIDITY_DATA_H__
 
-#include <random>
-#include <ctime>
-#include <string>
-#include "info.h"
+#include "sensor_data.h"
 
-class HumidityData
-{
-  private:
-    time_t timestamp;
-    double avg;
-    double min;
-    double max;
-    string unit;
-    HumidityData *next;
-  public:
-    HumidityData(time_t timestamp, double min, double max, double avg);
+class HumidityData : public SensorData {
+private:
+  HumidityData *next;
 
-    void setNext(HumidityData *data);
-    HumidityData *getNext();
+public:
+  HumidityData(time_t timestamp, double min, double max, double avg);
 
-    void setValue(double value);
-    double getValue();
-
-    void setMin(double min);
-    double getMin();
-
-    void setMax(double max);
-    double getMax();
-
-    void setTimestamp(time_t timestamp);
-    time_t getTimestamp();
-
-    string getUnit();
+  void          setNext(HumidityData *next);
+  HumidityData *getNext();
 };
 
 #endif /* __HUMIDITY_DATA_H__ */
