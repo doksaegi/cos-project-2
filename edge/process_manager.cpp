@@ -44,6 +44,8 @@ uint8_t *ProcessManager::processData(DataSet *ds, int *dlen)
 
   ret = (uint8_t *)malloc(BUFLEN);
   // 결과 버퍼를 힙에 BUFLEN 바이트 할당
+  memset(ret, 0, BUFLEN);
+  // 버퍼 전체를 0으로 초기화 (쓰레기값 방지)
 
   int temp_avg;
   // temp_avg : 일 평균 기온 (DataSet 레벨에서 이미 집계된 값)
@@ -104,8 +106,6 @@ uint8_t *ProcessManager::processData(DataSet *ds, int *dlen)
   power_avg = (num > 0) ? power_sum / num : 0;
   // 전체 하우스 전력 합을 하우스 수로 나눠 평균 산출.
   // num == 0 이면 0 나눗셈 방지를 위해 0 반환.
-  memset(ret, 0, BUFLEN);
-  // 버퍼 전체를 0으로 초기화 (쓰레기값 방지)
 
   *dlen = 0;
   // 패킷 길이 카운터 초기화
