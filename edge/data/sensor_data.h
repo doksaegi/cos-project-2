@@ -1,3 +1,7 @@
+/**
+humidity, temperature data 를 raw data로부터 선별할 때 쓰는 getMin, getValue, getMax 등 공통적으로 사용되는 함수를 정의한 모계 class. 
+*/
+
 #ifndef __SENSOR_DATA_H__
 #define __SENSOR_DATA_H__
 
