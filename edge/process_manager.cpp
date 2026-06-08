@@ -23,7 +23,7 @@ void ProcessManager::init()
 
 uint8_t *ProcessManager::processData(DataSet *ds, int *dlen)
 {
-  
+//ds : 하루치 센서 데이터 전체를 담은 DataSet 포인터, dlen : 출력 파라미터로 호출자에게 직렬화된 바이트 수를 알려줌 
   uint8_t *ret, *p;
   // ret : 직렬화 결과를 쓸 버퍼 (힙 할당)
   // p   : 버퍼 내 현재 쓰기 위치를 가리키는 커서
@@ -37,7 +37,12 @@ uint8_t *ProcessManager::processData(DataSet *ds, int *dlen)
   SensorData *tdata;
   // tdata : DataSet 레벨 기온 데이터.
   //         getTemperatureData()는 TemperatureData*를 반환하지만
-  //         TemperatureData가 SensorData를 상속하므로 SensorData*로 수신 가능.
+  //         TemperatureData가 SensorData를 상속하므로 SensorData*로 수신 가능. 부모 class sensordata로부터 온도 데이터를 가져옴. 
+  // 실행 순서:
+// 1. tdata → 객체 찾아감
+// 2. virtual 이 정의되어 있을 경우, 객체 앞의 vptr → vtable 찾아감
+// 3. vtable에서 getValue 주소 꺼냄
+// 4. 그 주소로 점프해서 실행
 
   PowerData  *pdata;
   // pdata : 개별 하우스 전력 데이터 포인터
@@ -70,6 +75,7 @@ uint8_t *ProcessManager::processData(DataSet *ds, int *dlen)
   tdata = ds->getTemperatureData();
   // DataSet 레벨의 기온 데이터 획득.
   // 반환 타입은 TemperatureData* 이지만 SensorData*로 묵시적 업캐스팅.
+  
 
   temp_avg = (int)tdata->getValue();
   // SensorData::getValue() 호출 → avg(일 평균 기온) 반환.
@@ -126,7 +132,25 @@ uint8_t *ProcessManager::processData(DataSet *ds, int *dlen)
   return ret;
   // 직렬화된 패킷(4 bytes) 반환.
 }
+/** (1)  집계함수 1번: 
+power_avg, temperature_avg, month
 
+(3) 집계함수 3 -->1 
+* power_avg, power_min
+기타 환경변수를 모두 제거하고, 전력만으로 이루어진 featre2개만 보내서 예측도를 높이고자 함. 하지만 power_min과 power_avg는 서로 높은 상관관계를 가지므로, 
+두 개를 동시에 넣어도 독립적인 정보를 추가하지 못하고 파라미터만 늘리는 걸 확인함. 
+결론적으로 온도 feature가 빠진 상태에서 전력 두 개만으로는 계절성을 학습하기 어렵고, power_min은 power_avg와 중복됨. 
+(2) 집계함수 2번 -->1번
+temp_mn_M. power_avg, humidity, month
+집계함수 3으로 얻은 결론을 토대로 humidity, temp_min_m을 추가함. 
+이상치(온도 중 -20이하, 32이상)을 제거하려고 이상치가 나오면 0으로 마스킹하여 temp_min_m을 feature로 생성함. 
+그러나 첫째, raw_data.h 기준 730일 데이터에서 -20 이하 또는 30 초과 값이 단 한 건도 없어 마스킹이 한 번도 발동되지 않음. 로직의 실효성이 없음
+둘째, 만약 마스킹이 발동됐다면 실제 기온값을 0 또는 인접값으로 교체하는데, LSTM은 0을 의미 있는 값으로 학습하므로 오히려 패턴을 왜곡함.
+결론: 노이즈 제거 의도였지만 실데이터에는 해당 이상치가 없고, 잘못 발동되면 더 나쁜 결과를 낸다. 따라서 temp_avg로 교체했따. 
+② humid_min 제거
+습도 최솟값은 전력과의 직접적 인과관계가 약하고, min값은 순간 노이즈에 민감함. feature 수 대비 정보량이 낮아 제거함. 
+그래서 결론적으로 power값은 하나만 남기고, 쓸모없는 값인 humid뺴고, 불필요한 마스킹한 값 지우니까 mont, power averge, tempeagre만 남았다 
+*/
 
 /* #include "process_manager.h"
 #include "opcode.h"
